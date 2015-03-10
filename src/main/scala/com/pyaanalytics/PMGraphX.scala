@@ -33,35 +33,15 @@ case class Vertex(vid: VertexId, prop: VertexProperty)
 
 object PMGraphX {
 
-  case class PMGraphXConfig(xmlFile: String = "",
-                       sparkMaster: String = "Master",
-                       mapNum: Int = 1,
-                       userName: String = "spark")
+  case class PMGraphXConfig(vertexPath: String = "",
+                            edgePath: String = "",
+                            sparkMaster: String = "local",
+                            userName: String = "spark")
 
   def hash64(string: String): Long = {
     string.map(_.toLong).foldLeft(1125899906842597L)((h: Long, c: Long) => 31 * h + c)
   }
 
-  def processRecord(recString: String): Seq[(Vertex, Vertex)] = {
-    try {
-      val rec = XML.loadString(recString)
-      val pmid = (rec \\ "MedlineCitation" \ "PMID").text
-      val thisVert = Vertex(hash64(pmid), PaperProperty(pmid.toInt))
-      val abstractText = rec \\ "MedlineCitation" \ "Article" \ "Abstract" \ "AbstractText"
-      if (abstractText.length == 0 || pmid.toInt == 0) {return Seq()}
-      val firstNames = (rec \\ "AuthorList" \ "Author" \ "ForeName") map (_.text)
-      val lastNames = (rec \\ "AuthorList" \ "Author" \ "LastName") map (_.text)
-      val authors = firstNames
-        .zip(lastNames)
-        .map{case (f, l) => f + " " + l}
-        .map{x => Vertex(hash64(x), AuthorProperty(x))}
-      val citations = (rec \\ "CommentCorrectionsList" \ "CommentsCorrections" \ "PMID")
-        .map{x => Vertex(hash64(x.text), PaperProperty(x.text.toInt))}
-      authors.map((thisVert, _)) ++ citations.map((thisVert, _))
-    } catch {
-      case e: Exception => Seq()
-    }
-  }
 
   def main(args: Array[String]): Unit = {
 
@@ -71,16 +51,17 @@ object PMGraphX {
         (x, c) => c.copy(sparkMaster = x)
       }
 
-      opt[Int]('n', "mapNum") valueName("mapNum") action {
-        (x, c) => c.copy(mapNum = x)
-      }
 
       opt[String]('u', "userName") valueName("userName") action {
         (x, c) => c.copy(userName = x)
       }
 
-      arg[String]("xmlFile") valueName("xmlFile") action {
-        (x, c) => c.copy(xmlFile = x)
+      arg[String]("vertexPath") valueName("vertexPath") action {
+        (x, c) => c.copy(vertexPath = x)
+      }
+
+      arg[String]("edgePath") valueName("edgePath") action {
+        (x, c) => c.copy(edgePath = x)
       }
     }
 
@@ -96,12 +77,13 @@ object PMGraphX {
                                             classOf[PaperProperty]))
         val sc = new SparkContext(sparkConf)
 
-        val nodeRDD = sc.textFile(config.xmlFile) flatMap processRecord
-        nodeRDD.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER)
-        val vertices = nodeRDD flatMap {case (p, v) => Seq(p, v)}
-        vertices.saveAsObjectFile("vertices")
-        val edges = nodeRDD map {case (p, v) => Edge(p.vid, v.vid, Null)}
-        edges.saveAsObjectFile("edges")
+        val vertexRDD: RDD[(VertexId, VertexProperty)] = sc.objectFile(config.vertexPath, 1)
+        val edgeRDD: RDD[Edge[Null]] = sc.objectFile(config.edgePath, 1)
+
+        val defVertex = (PaperProperty(0))
+        val graph = Graph(vertexRDD, edgeRDD, defVertex)
+
+        println(graph.numEdges)
         sc.stop()
       } case None => {
         System.exit(1)
