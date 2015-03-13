@@ -112,7 +112,7 @@ object PMGraphX {
           {case ((cs1, cd1), (cs2, cd2)) => (cs1 || cs2,  cd1 + cd2)}
         )
 
-        println(graph.numEdges)
+        println(linkedPapers.count())
         sc.stop()
       } case None => {
         System.exit(1)
