@@ -23,11 +23,16 @@ import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 
 import scopt.OptionParser
+import scala.io.Source
 import scala.xml._
 
 class VertexProperty()
 case class AuthorProperty(name: String) extends VertexProperty
 case class PaperProperty(pmid: Int) extends VertexProperty
+
+class VP2()
+case class AP(name: String, evidence: Int, linked: Int) extends VP2
+case class PP(pmid: Int, evidence: Boolean, cites: Boolean, cited: Int) extends VP2
 
 case class Vertex(vid: VertexId, prop: VertexProperty)
 
@@ -35,6 +40,7 @@ object PMGraphX {
 
   case class PMGraphXConfig(vertexPath: String = "",
                             edgePath: String = "",
+                            pmidFile: String = "",
                             sparkMaster: String = "local",
                             userName: String = "spark")
 
@@ -47,15 +53,6 @@ object PMGraphX {
 
     val parser = new OptionParser[PMGraphXConfig]("PMGraphX") {
 
-      arg[String]("sparkMaster") valueName("sparkMaster") action {
-        (x, c) => c.copy(sparkMaster = x)
-      }
-
-
-      opt[String]('u', "userName") valueName("userName") action {
-        (x, c) => c.copy(userName = x)
-      }
-
       arg[String]("vertexPath") valueName("vertexPath") action {
         (x, c) => c.copy(vertexPath = x)
       }
@@ -63,10 +60,24 @@ object PMGraphX {
       arg[String]("edgePath") valueName("edgePath") action {
         (x, c) => c.copy(edgePath = x)
       }
+
+      arg[String]("pmidFile") valueName("pmidFile") action {
+        (x, c) => c.copy(pmidFile = x)
+      }
+
+      arg[String]("sparkMaster") valueName("sparkMaster") action {
+        (x, c) => c.copy(sparkMaster = x)
+      }
+
+      opt[String]('u', "userName") valueName("userName") action {
+        (x, c) => c.copy(userName = x)
+      }
     }
 
     parser.parse(args, PMGraphXConfig()) match {
       case Some(config) => {
+        val pmids = Source.fromFile(config.pmidFile).getLines map { _.toInt } toSet
+
         val sparkConf = new SparkConf()
           .setAppName("Pubmed GraphX Stuff")
           .setMaster(config.sparkMaster)
@@ -81,7 +92,25 @@ object PMGraphX {
         val edgeRDD: RDD[Edge[Null]] = sc.objectFile(config.edgePath, 1)
 
         val defVertex = (PaperProperty(0))
-        val graph = Graph(vertexRDD, edgeRDD, defVertex)
+        val graph = Graph(vertexRDD, edgeRDD, defVertex) groupEdges {case (x, y) => null}
+
+        val evidenceGraph = graph.mapVertices(
+          (vid, prop) => prop match {
+            case prop: AuthorProperty => AP(prop.name, 0, 0)
+            case prop: PaperProperty => PP(prop.pmid, pmids.contains(prop.pmid), false, 0)
+          }
+        )
+
+        val linkedPapers: VertexRDD[(Boolean, Int)] = evidenceGraph.aggregateMessages(
+          ec => ec.toEdgeTriplet.toTuple match {
+            case (_, (dId, dAtt: AP), _) => Unit
+            case (_, (dId, dAtt: PP), _) => if (pmids.contains(dAtt.pmid)) {
+              ec.sendToDst(false, 1)
+              ec.sendToSrc(true, 0)
+            }
+          },
+          {case ((cs1, cd1), (cs2, cd2)) => (cs1 || cs2,  cd1 + cd2)}
+        )
 
         println(graph.numEdges)
         sc.stop()
