@@ -88,9 +88,12 @@ object PMGraphX {
                                             classOf[PaperProperty]))
         val sc = new SparkContext(sparkConf)
 
-        val vertexRDD: RDD[(VertexId, VertexProperty)] = sc.objectFile(config.vertexPath, 1)
+        val vfileRDD: RDD[Vertex] = sc.objectFile(config.vertexPath, 1)
         val edgeRDD: RDD[Edge[Null]] = sc.objectFile(config.edgePath, 1)
 
+        val vertexRDD: RDD[(VertexId, VertexProperty)] = vfileRDD map {
+          vert => (vert.vid, vert.prop)
+        }
         val defVertex = (PaperProperty(0))
         val graph = Graph(vertexRDD, edgeRDD, defVertex) groupEdges {case (x, y) => null}
 
