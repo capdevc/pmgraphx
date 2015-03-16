@@ -89,13 +89,13 @@ object PMGraphX {
         val sc = new SparkContext(sparkConf)
 
         val vfileRDD: RDD[Vertex] = sc.objectFile(config.vertexPath, 1)
-        val edgeRDD: RDD[Edge[Null]] = sc.objectFile(config.edgePath, 1)
+        val edgeRDD: RDD[Edge[Int]] = sc.objectFile(config.edgePath, 1)
 
         val vertexRDD: RDD[(VertexId, VertexProperty)] = vfileRDD map {
           vert => (vert.vid, vert.prop)
         }
         val defVertex = (PaperProperty(0))
-        val graph = Graph(vertexRDD, edgeRDD, defVertex) groupEdges {case (x, y) => null}
+        val graph = Graph(vertexRDD, edgeRDD, defVertex) groupEdges {case (x, y) => x + y}
 
         val evidenceGraph = graph.mapVertices(
           (vid, prop) => prop match {
@@ -115,7 +115,14 @@ object PMGraphX {
           {case ((cs1, cd1), (cs2, cd2)) => (cs1 || cs2,  cd1 + cd2)}
         )
 
-        println(linkedPapers.count())
+        val paperGraph = evidenceGraph.joinVertices(linkedPapers)(
+          (vid, prop, u) => prop match {
+            case prop: AP => AP(prop.name, prop.evidence, prop.linked)
+            case prop: PP => PP(prop.pmid, prop.evidence, u._1, u._2)
+          }
+        )
+
+        println(evidenceGraph.numEdges)
         sc.stop()
       } case None => {
         System.exit(1)
