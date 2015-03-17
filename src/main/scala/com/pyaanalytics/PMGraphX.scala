@@ -44,6 +44,10 @@ object PMGraphX {
                             sparkMaster: String = "local",
                             userName: String = "spark")
 
+  implicit class CartProdable[X](xs: Traversable[X]) {
+    def cross[Y](ys: Traversable[Y]) = for {x <- xs; y <- ys} yield (x, y)
+  }
+
   def hash64(string: String): Long = {
     string.map(_.toLong).foldLeft(1125899906842597L)((h: Long, c: Long) => 31 * h + c)
   }
@@ -122,7 +126,20 @@ object PMGraphX {
           }
         )
 
-        println(evidenceGraph.numEdges)
+        val authEdges: RDD[Edge[Int]] = paperGraph.collectNeighborIds(EdgeDirection.Out)
+          .flatMap(
+          vArray => (vArray._2.toTraversable cross vArray._2.toTraversable).map(xs => xs match {
+                                                          case (x, y) => Edge(x, y, 1)
+                                                        }
+          )
+        )
+
+        val fullGraph = Graph(paperGraph.vertices, paperGraph.edges ++ authEdges)
+          .groupEdges((x, y) => x + y)
+
+        println(fullGraph.numEdges)
+        fullGraph.edges.saveAsTextFile("edges")
+        fullGraph.vertices.saveAsTextFile("vertices")
         sc.stop()
       } case None => {
         System.exit(1)
