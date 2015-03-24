@@ -139,7 +139,9 @@ object PMGraphX {
 
         println(fullGraph.numEdges)
         fullGraph.edges.saveAsTextFile("edges")
+        fullGraph.edges.saveAsObjectFile("../auth_edges")
         fullGraph.vertices.saveAsTextFile("vertices")
+        fullGraph.vertices.saveAsObjectFile("../auth_vertices")
         sc.stop()
       } case None => {
         System.exit(1)
