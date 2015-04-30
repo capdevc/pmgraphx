@@ -1,1 +1,1 @@
-xml -> graphx
+link authors in pubmed graph
