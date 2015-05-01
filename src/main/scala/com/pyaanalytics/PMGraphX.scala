@@ -38,12 +38,11 @@ case class Vertex(vid: VertexId, prop: VertexProperty)
 
 object PMGraphX {
 
-  case class PMGraphXConfig(vertexPath: String = "",
-                            edgePath: String = "",
+  case class PMGraphXConfig(inDir: String = "",
                             pmidFile: String = "",
-                            sparkMaster: String = "local",
-                            userName: String = "spark")
-
+                            outDir: String = ""
+                            // sparkMaster: String = "local",
+                            )
   implicit class CartProdable[X](xs: Traversable[X]) {
     def cross[Y](ys: Traversable[Y]) = for {x <- xs; y <- ys} yield (x, y)
   }
@@ -57,24 +56,21 @@ object PMGraphX {
 
     val parser = new OptionParser[PMGraphXConfig]("PMGraphX") {
 
-      arg[String]("vertexPath") valueName("vertexPath") action {
-        (x, c) => c.copy(vertexPath = x)
-      }
-
-      arg[String]("edgePath") valueName("edgePath") action {
-        (x, c) => c.copy(edgePath = x)
+      arg[String]("inDir") valueName("inDir") action {
+        (x, c) => c.copy(inDir = x)
       }
 
       arg[String]("pmidFile") valueName("pmidFile") action {
         (x, c) => c.copy(pmidFile = x)
       }
 
-      arg[String]("sparkMaster") valueName("sparkMaster") action {
-        (x, c) => c.copy(sparkMaster = x)
+      arg[String]("outDir") valueName("outDir") action {
+        (x, c) => c.copy(outDir = x)
       }
 
-      opt[String]('u', "userName") valueName("userName") action {
-        (x, c) => c.copy(userName = x)
+      // arg[String]("sparkMaster") valueName("sparkMaster") action {
+      //   (x, c) => c.copy(sparkMaster = x)
+
       }
     }
 
@@ -84,16 +80,19 @@ object PMGraphX {
 
         val sparkConf = new SparkConf()
           .setAppName("Pubmed GraphX Stuff")
-          .setMaster(config.sparkMaster)
+          // .setMaster(config.sparkMaster)
           .set("spark.serializer", "org.apache.spark.serializer.KyroSerializer")
+          .set("spark.executor.memory", "250g")
+          .set("spark.driver.memory", "250g")
+
         sparkConf.registerKryoClasses(Array(classOf[Vertex],
                                             classOf[VertexProperty],
                                             classOf[AuthorProperty],
                                             classOf[PaperProperty]))
         val sc = new SparkContext(sparkConf)
 
-        val vfileRDD: RDD[Vertex] = sc.objectFile(config.vertexPath, 1)
-        val edgeRDD: RDD[Edge[Int]] = sc.objectFile(config.edgePath, 1)
+        val vfileRDD: RDD[Vertex] = sc.objectFile(config.inDir ++ "/vertices", 1)
+        val edgeRDD: RDD[Edge[Int]] = sc.objectFile(config.inDir ++ "/edges", 1)
 
         val vertexRDD: RDD[(VertexId, VertexProperty)] = vfileRDD map {
           vert => (vert.vid, vert.prop)
@@ -138,10 +137,10 @@ object PMGraphX {
           .groupEdges((x, y) => x + y)
 
         println(fullGraph.numEdges)
-        fullGraph.edges.saveAsTextFile("edges")
-        fullGraph.edges.saveAsObjectFile("../auth_edges")
-        fullGraph.vertices.saveAsTextFile("vertices")
-        fullGraph.vertices.saveAsObjectFile("../auth_vertices")
+        fullGraph.edges.saveAsTextFile(config.outDir ++ "/text_edges")
+        fullGraph.edges.saveAsObjectFile(config.outDir ++ "/edges")
+        fullGraph.vertices.saveAsTextFile(config.outDir ++ "/text_vertices")
+        fullGraph.vertices.saveAsObjectFile(config.outDir ++ "/vertices")
         sc.stop()
       } case None => {
         System.exit(1)
