@@ -70,8 +70,7 @@ object PMGraphX {
 
       // arg[String]("sparkMaster") valueName("sparkMaster") action {
       //   (x, c) => c.copy(sparkMaster = x)
-
-      }
+      // }
     }
 
     parser.parse(args, PMGraphXConfig()) match {
