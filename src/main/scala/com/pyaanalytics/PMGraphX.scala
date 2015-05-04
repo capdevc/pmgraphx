@@ -136,9 +136,9 @@ object PMGraphX {
           .groupEdges((x, y) => x + y)
 
         println(fullGraph.numEdges)
-        fullGraph.edges.saveAsTextFile(config.outDir ++ "/text_edges")
+        // fullGraph.edges.saveAsTextFile(config.outDir ++ "/text_edges")
         fullGraph.edges.saveAsObjectFile(config.outDir ++ "/edges")
-        fullGraph.vertices.saveAsTextFile(config.outDir ++ "/text_vertices")
+        // fullGraph.vertices.saveAsTextFile(config.outDir ++ "/text_vertices")
         fullGraph.vertices.saveAsObjectFile(config.outDir ++ "/vertices")
         sc.stop()
       } case None => {
